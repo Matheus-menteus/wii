@@ -52,44 +52,59 @@
     <div class="sensor-data" id="beta-display">Beta (Y): 0</div>
     <div class="sensor-data" id="gamma-display">Gamma (X): 0</div>
 
-    <script>
-        const btnIniciar = document.getElementById('btn-iniciar');
-        const displayBeta = document.getElementById('beta-display');
-        const displayGamma = document.getElementById('gamma-display');
+       <script>
+    const btnIniciar = document.getElementById('btn-iniciar');
+    const displayBeta = document.getElementById('beta-display');
+    const displayGamma = document.getElementById('gamma-display');
 
-        btnIniciar.addEventListener('click', async () => {
-            // Verifica se o navegador exige pedido formal de permissão (ex: iOS)
-            if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
-                try {
-                    const permissao = await DeviceOrientationEvent.requestPermission();
-                    if (permissao === 'granted') {
-                        iniciarSensores();
-                    } else {
-                        alert("Permissão negada! O controle não vai funcionar.");
-                    }
-                } catch (erro) {
-                    console.error("Erro ao pedir permissão:", erro);
+    // ⚠️ COLOQUE AQUI O SEU LINK DO CODESPACES DA PORTA 8765
+    // Lembre-se de usar wss:// no começo!
+    const wsUrl = "wss://SEU-LINK-DA-PORTA-8765.app.github.dev"; 
+    
+    let socket;
+
+    btnIniciar.addEventListener('click', async () => {
+        if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
+            try {
+                const permissao = await DeviceOrientationEvent.requestPermission();
+                if (permissao === 'granted') {
+                    iniciarConexaoESensores();
+                } else {
+                    alert("Permissão negada!");
                 }
-            } else {
-                // Navegadores que não exigem permissão prévia (maioria dos Androids)
-                iniciarSensores();
+            } catch (erro) {
+                console.error(erro);
+            }
+        } else {
+            iniciarConexaoESensores();
+        }
+    });
+
+    function iniciarConexaoESensores() {
+        btnIniciar.style.display = 'none';
+
+        // Conecta ao servidor Python
+        socket = new WebSocket(wsUrl);
+
+        socket.onopen = () => {
+            console.log("Conectado ao servidor!");
+            displayBeta.innerText = "Conectado ao PC! 🟢";
+        };
+
+        window.addEventListener('deviceorientation', (evento) => {
+            const beta = Math.round(evento.beta);
+            const gamma = Math.round(evento.gamma);
+
+            displayBeta.innerText = `Beta (Y): ${beta}`;
+            displayGamma.innerText = `Gamma (X): ${gamma}`;
+
+            // Só envia se o WebSocket estiver conectado
+            if (socket && socket.readyState === WebSocket.OPEN) {
+                const dados = JSON.stringify({ beta: beta, gamma: gamma });
+                socket.send(dados);
             }
         });
-
-        function iniciarSensores() {
-            // Esconde o botão após a ativação
-            btnIniciar.style.display = 'none';
-
-            window.addEventListener('deviceorientation', (evento) => {
-                // Arredondamos os valores para não lidar com casas decimais desnecessárias no jogo
-                const beta = Math.round(evento.beta);   // Inclinação para frente e para trás
-                const gamma = Math.round(evento.gamma); // Inclinação para a esquerda e direita
-
-                // Atualiza a tela do celular
-                displayBeta.innerText = `Beta (Y): ${beta}`;
-                displayGamma.innerText = `Gamma (X): ${gamma}`;
-            });
-        }
-    </script>
+    }
+</script>
 </body>
 </html>
