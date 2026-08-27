@@ -2,23 +2,27 @@ import asyncio
 import websockets
 import json
 
+# Lista para guardar os dispositivos conectados (Celular e PC)
+clientes = set()
+
 async def wii_controller(websocket):
-    print("\n🎮 Celular conectado com sucesso!")
+    clientes.add(websocket)
+    print(f"🎮 Novo dispositivo! Total conectados: {len(clientes)}")
     try:
         async for message in websocket:
-            dados = json.loads(message)
-            # Por enquanto, vamos imprimir no terminal para ver a mágica
-            # Na próxima etapa, enviaremos isso para o jogo!
-            print(f"Movimento -> Frente/Trás: {dados['beta']:3} | Lados: {dados['gamma']:3}", end="\r")
+            # Recebe o movimento do celular e repassa para a tela do jogo no PC
+            for cliente in clientes:
+                if cliente != websocket: # Não devolve a mensagem para o próprio celular
+                    await cliente.send(message)
     except websockets.exceptions.ConnectionClosed:
-        print("\n📱 Celular desconectado.")
+        print("📱 Dispositivo desconectado.")
+    finally:
+        clientes.remove(websocket)
 
 async def main():
-    # Inicia o servidor WebSocket na porta 8765
     async with websockets.serve(wii_controller, "0.0.0.0", 8765):
-        print("Servidor WebSocket rodando na porta 8765.")
-        print("Aguardando conexão do celular...")
-        await asyncio.Future()  # Mantém o servidor rodando para sempre
+        print("Servidor Ponte rodando! Aguardando o celular e a tela do jogo...")
+        await asyncio.Future()
 
 if __name__ == "__main__":
     asyncio.run(main())
