@@ -2,74 +2,164 @@
 <html lang="pt-BR">
 <head>
     <meta charset="UTF-8">
-    <title>Tela do Jogo - Wii Emulador</title>
+    <title>Wii Rocket: Desvio Espacial</title>
     <style>
-        body { 
-            margin: 0; 
-            background: #2c3e50; 
-            display: flex; 
-            justify-content: center; 
-            align-items: center; 
-            height: 100vh; 
-            overflow: hidden;
-        }
-        canvas { 
-            background: #34495e; 
-            border: 4px solid #ecf0f1; 
-            border-radius: 10px; 
-            box-shadow: 0 10px 30px rgba(0,0,0,0.5); 
-        }
+        body { margin: 0; background: black; display: flex; justify-content: center; align-items: center; height: 100vh; overflow: hidden; font-family: 'Courier New', Courier, monospace; color: white; }
+        canvas { background: #01010a; border: 4px solid #444; border-radius: 10px; box-shadow: 0 0 20px rgba(100,100,255,0.2); }
+        #game-over { display: none; position: absolute; font-size: 60px; text-align: center; }
+        button { padding: 10px 20px; font-size: 20px; cursor: pointer; background: limegreen; border: none; color: white; font-family: monospace; }
     </style>
 </head>
 <body>
 
-    <!-- Esta é a "TV" do nosso console -->
+    <div id="game-over">
+        <p>GAME OVER</p>
+        <p id="final-score" style="font-size: 24px">Pontos: 0</p>
+        <button onclick="reiniciarJogo()">Jogar Novamente (B do Wii)</button>
+    </div>
+
+    <!-- Nossa "TV" Espacial -->
     <canvas id="tela" width="800" height="600"></canvas>
 
     <script>
         const canvas = document.getElementById('tela');
         const ctx = canvas.getContext('2d');
+        const gameOverDiv = document.getElementById('game-over');
+        const finalScoreText = document.getElementById('final-score');
 
-        // Posição inicial do quadrado (bem no meio da tela)
-        let x = 375;
-        let y = 275;
-        const tamanho = 50;
+        // ====== ⚙️ CONFIGURAÇÕES E ESTADO DO JOGO ======
+        let frames = 0;
+        let score = 0;
+        let gameOver = false;
+        
+        // ⚠️ COLOQUE O SEU LINK DA PORTA 8765 AQUI
+        const WS_URL = "wss://obscure-goldfish-wr6pwq94rrj92g4wj-8765.app.github.dev/"; 
+        const socket = new WebSocket(WS_URL);
 
-        // ⚠️ COLOQUE O SEU LINK DA PORTA 8765 AQUI (O MESMO DO CELULAR)
-        const wsUrl = "wss://obscure-goldfish-wr6pwq94rrj92g4wj-8765.app.github.dev/"; 
-        const socket = new WebSocket(wsUrl);
-
-        socket.onmessage = (evento) => {
-            const dados = JSON.parse(evento.data);
-
-            // A MÁGICA ACONTECE AQUI:
-            // Lemos a inclinação e transformamos em movimento (velocidade)
-            // Multiplicamos por 0.5 para não ficar rápido demais
-            x += dados.gamma * 0.5; // Inclinar pros lados move no eixo X
-            y -= dados.beta * 0.5;  // Inclinar pra frente/trás move no eixo Y
-
-            // Barreiras invisíveis para o quadrado não sair da tela
-            if (x < 0) x = 0;
-            if (x > canvas.width - tamanho) x = canvas.width - tamanho;
-            if (y < 0) y = 0;
-            if (y > canvas.height - tamanho) y = canvas.height - tamanho;
+        // ====== 🚀 O FOGUETE (JOGADOR) ======
+        const foguete = {
+            x: canvas.width / 2, // Começa no meio
+            y: canvas.height / 2,
+            width: 30,
+            height: 50,
+            velX: 0,
+            velY: 0
         };
 
-        // Loop principal do jogo (roda 60 vezes por segundo)
-        function desenhar() {
-            // 1. Limpa a tela inteira
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
-            
-            // 2. Desenha o nosso "personagem" (um quadrado vermelho)
-            ctx.fillStyle = '#e74c3c';
-            ctx.fillRect(x, y, tamanho, tamanho);
+        // ====== 🌑 OS ASTEROIDES (INIMIGOS) ======
+        const asteroides = [];
 
-            // 3. Pede para o navegador desenhar o próximo frame
-            requestAnimationFrame(desenhar);
+        function criarAsteroide() {
+            asteroides.push({
+                x: Math.random() * canvas.width,
+                y: -50,
+                raio: 20 + Math.random() * 30,
+                velY: 2 + Math.random() * 4
+            });
         }
 
-        // Inicia o loop
-        desenhar(); 
+        // ====== 📡 COMUNICAÇÃO COM O CELULAR ======
+        socket.onmessage = (evento) => {
+            if (gameOver) return;
+            const dados = JSON.parse(evento.data);
+
+            // Mapeamento Física: Inclinação vira Aceleração (não posição direta)
+            // Isso dá inércia ao foguete.
+            const sensibilidade = 0.05;
+            foguete.velX += dados.gamma * sensibilidade; // Inclinar pros lados move em X
+            foguete.velY -= dados.beta * sensibilidade;  // Inclinar pra frente/trás move em Y (usando o modo invertido de fábrica)
+            
+            // Fricção Espacial (para o foguete parar devagar se não estivermos inclinando)
+            foguete.velX *= 0.98;
+            foguete.velY *= 0.98;
+        };
+
+        // ====== 🎮 LOOP PRINCIPAL (60 FPS) ======
+        function loop() {
+            frames++;
+            ctx.clearRect(0, 0, canvas.width, canvas.height); // Limpa a tela
+
+            if (!gameOver) {
+                // 1. Física e Movimento do Foguete
+                foguete.x += foguete.velX;
+                foguete.y += foguete.velY;
+
+                // 2. Colisão com as Bordas
+                if (foguete.x < 0) { foguete.x = 0; foguete.velX = 0; }
+                if (foguete.x > canvas.width - foguete.width) { foguete.x = canvas.width - foguete.width; foguete.velX = 0; }
+                if (foguete.y < 0) { foguete.y = 0; foguete.velY = 0; }
+                if (foguete.y > canvas.height - foguete.height) { foguete.y = canvas.height - foguete.height; foguete.velY = 0; }
+
+                // 3. Criar novos asteroides (aumenta a dificuldade com o tempo)
+                const spawnRate = Math.max(5, 50 - Math.floor(score / 10)); // Nasce um asteroide a cada 50 frames, diminuindo até 5
+                if (frames % spawnRate === 0) {
+                    criarAsteroide();
+                }
+
+                // 4. Mover, Desenhar e Checar Colisão dos Asteroides
+                for (let i = asteroides.length - 1; i >= 0; i--) {
+                    const a = asteroides[i];
+                    a.y += a.velY; // Move para baixo
+
+                    // Desenhar Asteroide
+                    ctx.fillStyle = "#888";
+                    ctx.beginPath();
+                    ctx.arc(a.x, a.y, a.raio, 0, Math.PI * 2);
+                    ctx.fill();
+
+                    // Detectar Colisão (simplificada: Ponto vs Círculo na ponta do foguete)
+                    const distX = a.x - (foguete.x + foguete.width/2);
+                    const distY = a.y - (foguete.y); // Checa na ponta do foguete
+                    const distance = Math.sqrt(distX * distX + distY * distY);
+
+                    if (distance < a.raio) {
+                        gameOver = true; // Bateu!
+                    }
+
+                    // Remover asteroides que saíram da tela e pontuar
+                    if (a.y > canvas.height + 50) {
+                        asteroides.splice(i, 1);
+                        score++;
+                    }
+                }
+
+                // 5. Desenhar o Foguete (Triângulo simples)
+                ctx.fillStyle = 'red';
+                ctx.beginPath();
+                ctx.moveTo(foguete.x + foguete.width / 2, foguete.y); // Ponta
+                ctx.lineTo(foguete.x, foguete.y + foguete.height);    // Esquerda
+                ctx.lineTo(foguete.x + foguete.width, foguete.y + foguete.height); // Direita
+                ctx.closePath();
+                ctx.fill();
+
+                // 6. Desenhar Pontuação
+                ctx.fillStyle = "limegreen";
+                ctx.font = "20px Monospace";
+                ctx.fillText("Pontos: " + score, 20, 30);
+
+            } else {
+                // Estado de Game Over
+                gameOverDiv.style.display = 'block';
+                finalScoreText.innerText = "Pontos: " + score;
+            }
+
+            requestAnimationFrame(loop);
+        }
+
+        function reiniciarJogo() {
+            gameOver = false;
+            gameOverDiv.style.display = 'none';
+            score = 0;
+            frames = 0;
+            foguete.x = canvas.width / 2;
+            foguete.y = canvas.height / 2;
+            foguete.velX = 0;
+            foguete.velY = 0;
+            asteroides.length = 0; // Limpa a lista
+        }
+
+        // Inicia a música... digo, o loop
+        loop(); 
     </script>
 </body>
 </html>
