@@ -46,7 +46,7 @@
             // Lemos a inclinação e transformamos em movimento (velocidade)
             // Multiplicamos por 0.5 para não ficar rápido demais
             x += dados.gamma * 0.5; // Inclinar pros lados move no eixo X
-            y += dados.beta * 0.5;  // Inclinar pra frente/trás move no eixo Y
+            y -= dados.beta * 0.5;  // Inclinar pra frente/trás move no eixo Y
 
             // Barreiras invisíveis para o quadrado não sair da tela
             if (x < 0) x = 0;
