@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <title>Tela do Jogo - Wii Emulador</title>
+    <style>
+        body { 
+            margin: 0; 
+            background: #2c3e50; 
+            display: flex; 
+            justify-content: center; 
+            align-items: center; 
+            height: 100vh; 
+            overflow: hidden;
+        }
+        canvas { 
+            background: #34495e; 
+            border: 4px solid #ecf0f1; 
+            border-radius: 10px; 
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5); 
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Esta é a "TV" do nosso console -->
+    <canvas id="tela" width="800" height="600"></canvas>
+
+    <script>
+        const canvas = document.getElementById('tela');
+        const ctx = canvas.getContext('2d');
+
+        // Posição inicial do quadrado (bem no meio da tela)
+        let x = 375;
+        let y = 275;
+        const tamanho = 50;
+
+        // ⚠️ COLOQUE O SEU LINK DA PORTA 8765 AQUI (O MESMO DO CELULAR)
+        const wsUrl = "wss://obscure-goldfish-wr6pwq94rrj92g4wj-8765.app.github.dev/"; 
+        const socket = new WebSocket(wsUrl);
+
+        socket.onmessage = (evento) => {
+            const dados = JSON.parse(evento.data);
+
+            // A MÁGICA ACONTECE AQUI:
+            // Lemos a inclinação e transformamos em movimento (velocidade)
+            // Multiplicamos por 0.5 para não ficar rápido demais
+            x += dados.gamma * 0.5; // Inclinar pros lados move no eixo X
+            y += dados.beta * 0.5;  // Inclinar pra frente/trás move no eixo Y
+
+            // Barreiras invisíveis para o quadrado não sair da tela
+            if (x < 0) x = 0;
+            if (x > canvas.width - tamanho) x = canvas.width - tamanho;
+            if (y < 0) y = 0;
+            if (y > canvas.height - tamanho) y = canvas.height - tamanho;
+        };
+
+        // Loop principal do jogo (roda 60 vezes por segundo)
+        function desenhar() {
+            // 1. Limpa a tela inteira
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            
+            // 2. Desenha o nosso "personagem" (um quadrado vermelho)
+            ctx.fillStyle = '#e74c3c';
+            ctx.fillRect(x, y, tamanho, tamanho);
+
+            // 3. Pede para o navegador desenhar o próximo frame
+            requestAnimationFrame(desenhar);
+        }
+
+        // Inicia o loop
+        desenhar(); 
+    </script>
+</body>
+</html>
