@@ -15,7 +15,8 @@
             justify-content: center;
             height: 100vh;
             margin: 0;
-            overflow: hidden; /* Evita que a tela role enquanto você joga */
+            overflow: hidden;
+            touch-action: manipulation; /* Evita dar zoom na tela ao apertar rápido */
         }
         #btn-iniciar {
             padding: 20px 40px;
@@ -26,22 +27,51 @@
             border: none;
             box-shadow: 0 6px #c0392b;
             cursor: pointer;
-            margin-bottom: 30px;
+            z-index: 10;
         }
-        #btn-iniciar:active {
-            box-shadow: 0 2px #c0392b;
-            transform: translateY(4px);
+        #interface-controle {
+            display: none; /* Fica escondido até o usuário ativar o controle */
+            flex-direction: column;
+            align-items: center;
+            width: 100%;
         }
         .sensor-data {
-            font-size: 28px;
-            margin: 15px;
-            font-weight: bold;
+            font-size: 20px;
+            margin: 5px;
             font-family: monospace;
             background: rgba(0,0,0,0.2);
-            padding: 15px;
+            padding: 10px;
             border-radius: 10px;
             width: 80%;
             text-align: center;
+        }
+        .botoes-container {
+            display: flex;
+            gap: 40px;
+            margin-top: 50px;
+        }
+        .btn-wii {
+            width: 100px;
+            height: 100px;
+            border-radius: 50%;
+            font-size: 40px;
+            font-weight: bold;
+            border: none;
+            color: white;
+            box-shadow: 0 8px rgba(0,0,0,0.3);
+            user-select: none;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: transform 0.1s, box-shadow 0.1s;
+        }
+        #btn-a { background-color: #3498db; }
+        #btn-b { background-color: #e67e22; }
+        
+        /* Efeito de afundar o botão quando pressionado */
+        .pressionado {
+            box-shadow: 0 2px rgba(0,0,0,0.3) !important;
+            transform: translateY(6px);
         }
     </style>
 </head>
@@ -49,62 +79,107 @@
 
     <button id="btn-iniciar">Ativar Controle</button>
     
-    <div class="sensor-data" id="beta-display">Beta (Y): 0</div>
-    <div class="sensor-data" id="gamma-display">Gamma (X): 0</div>
+    <div id="interface-controle">
+        <div class="sensor-data" id="status-conexao">Aguardando...</div>
+        <div class="sensor-data" id="beta-display">Beta (Y): 0</div>
+        <div class="sensor-data" id="gamma-display">Gamma (X): 0</div>
 
-       <script>
-    const btnIniciar = document.getElementById('btn-iniciar');
-    const displayBeta = document.getElementById('beta-display');
-    const displayGamma = document.getElementById('gamma-display');
+        <div class="botoes-container">
+            <div class="btn-wii" id="btn-b">B</div>
+            <div class="btn-wii" id="btn-a">A</div>
+        </div>
+    </div>
 
-    // ⚠️ COLOQUE AQUI O SEU LINK DO CODESPACES DA PORTA 8765
-    // Lembre-se de usar wss:// no começo!
-    const wsUrl = "wss://obscure-goldfish-wr6pwq94rrj92g4wj-8765.app.github.dev/" ; 
-    
-    let socket;
+    <script>
+        const btnIniciar = document.getElementById('btn-iniciar');
+        const interfaceControle = document.getElementById('interface-controle');
+        const displayBeta = document.getElementById('beta-display');
+        const displayGamma = document.getElementById('gamma-display');
+        const statusConexao = document.getElementById('status-conexao');
+        
+        const btnA = document.getElementById('btn-a');
+        const btnB = document.getElementById('btn-b');
 
-    btnIniciar.addEventListener('click', async () => {
-        if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
-            try {
-                const permissao = await DeviceOrientationEvent.requestPermission();
-                if (permissao === 'granted') {
-                    iniciarConexaoESensores();
-                } else {
-                    alert("Permissão negada!");
-                }
-            } catch (erro) {
-                console.error(erro);
-            }
-        } else {
-            iniciarConexaoESensores();
-        }
-    });
-
-    function iniciarConexaoESensores() {
-        btnIniciar.style.display = 'none';
-
-        // Conecta ao servidor Python
-        socket = new WebSocket(wsUrl);
-
-        socket.onopen = () => {
-            console.log("Conectado ao servidor!");
-            displayBeta.innerText = "Conectado ao PC! 🟢";
+        // Estado do controle que será enviado ao servidor
+        let estado = {
+            beta: 0,
+            gamma: 0,
+            botaoA: false,
+            botaoB: false
         };
 
-        window.addEventListener('deviceorientation', (evento) => {
-            const beta = Math.round(evento.beta);
-            const gamma = Math.round(evento.gamma);
+        // ⚠️ COLOQUE AQUI O SEU LINK DA PORTA 8765 DO CODESPACES
+        const wsUrl = "wss://SEU-LINK-DA-PORTA-8765.app.github.dev"; 
+        let socket;
 
-            displayBeta.innerText = `Beta (Y): ${beta}`;
-            displayGamma.innerText = `Gamma (X): ${gamma}`;
-
-            // Só envia se o WebSocket estiver conectado
-            if (socket && socket.readyState === WebSocket.OPEN) {
-                const dados = JSON.stringify({ beta: beta, gamma: gamma });
-                socket.send(dados);
+        btnIniciar.addEventListener('click', async () => {
+            if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
+                try {
+                    const permissao = await DeviceOrientationEvent.requestPermission();
+                    if (permissao === 'granted') {
+                        iniciarConexao();
+                    } else {
+                        alert("Permissão negada!");
+                    }
+                } catch (erro) {
+                    console.error(erro);
+                }
+            } else {
+                iniciarConexao();
             }
         });
-    }
-</script>
+
+        function iniciarConexao() {
+            btnIniciar.style.display = 'none';
+            interfaceControle.style.display = 'flex';
+
+            socket = new WebSocket(wsUrl);
+
+            socket.onopen = () => {
+                statusConexao.innerText = "🟢 Conectado ao PC!";
+                statusConexao.style.color = "lime";
+            };
+
+            socket.onclose = () => {
+                statusConexao.innerText = "🔴 Desconectado";
+                statusConexao.style.color = "red";
+            };
+
+            // Lê o giroscópio
+            window.addEventListener('deviceorientation', (evento) => {
+                estado.beta = Math.round(evento.beta);
+                estado.gamma = Math.round(evento.gamma);
+                atualizarTela();
+                enviarDados();
+            });
+
+            // ====== LÓGICA DOS BOTÕES ======
+            
+            // Botão A
+            btnA.addEventListener('touchstart', (e) => { e.preventDefault(); estado.botaoA = true; btnA.classList.add('pressionado'); enviarDados(); });
+            btnA.addEventListener('touchend', (e) => { e.preventDefault(); estado.botaoA = false; btnA.classList.remove('pressionado'); enviarDados(); });
+            // Fallback para clique de mouse se testar no PC
+            btnA.addEventListener('mousedown', () => { estado.botaoA = true; btnA.classList.add('pressionado'); enviarDados(); });
+            btnA.addEventListener('mouseup', () => { estado.botaoA = false; btnA.classList.remove('pressionado'); enviarDados(); });
+
+            // Botão B
+            btnB.addEventListener('touchstart', (e) => { e.preventDefault(); estado.botaoB = true; btnB.classList.add('pressionado'); enviarDados(); });
+            btnB.addEventListener('touchend', (e) => { e.preventDefault(); estado.botaoB = false; btnB.classList.remove('pressionado'); enviarDados(); });
+            btnB.addEventListener('mousedown', () => { estado.botaoB = true; btnB.classList.add('pressionado'); enviarDados(); });
+            btnB.addEventListener('mouseup', () => { estado.botaoB = false; btnB.classList.remove('pressionado'); enviarDados(); });
+        }
+
+        function atualizarTela() {
+            displayBeta.innerText = `Beta (Y): ${estado.beta}`;
+            displayGamma.innerText = `Gamma (X): ${estado.gamma}`;
+        }
+
+        function enviarDados() {
+            if (socket && socket.readyState === WebSocket.OPEN) {
+                // Envia o pacote completo: Movimento + Botões
+                socket.send(JSON.stringify(estado));
+            }
+        }
+    </script>
 </body>
 </html>
